@@ -1,15 +1,24 @@
-use std::{fs::File, error::Error};
+use std::env;
 use std::io::Read;
+use std::path::PathBuf;
+use std::{error::Error, fs::File};
 
-mod parser;
+use greyxml::{lex, tokenize};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut input = String::new();
-    let mut file = File::open("./kisserss.rss")?;
+    let mut args = env::args();
+    // Skip process name
+    args.next();
+    let Some(path_string) = args.next() else {
+        panic!("No path given");
+    };
+    let path = PathBuf::from(path_string);
+    let mut file = File::open(path)?;
     file.read_to_string(&mut input)?;
-    let lexed = parser::lex(input)?;
+    let lexed = lex(input)?;
     let mut iter = lexed.into_iter();
-    let tokens = parser::tokenize(&mut iter)?;
+    let tokens = tokenize(&mut iter)?;
     println!("{:?}", tokens);
 
     Ok(())
