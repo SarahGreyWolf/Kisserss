@@ -115,7 +115,7 @@ pub fn lex(stream: String) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                 lexed.push(Lexicals::DoubleQuote);
             }
             '/' => {
-                if !in_quote {
+                if !in_quote && (in_block || in_simple_block) {
                     lexed.push(Lexicals::CloseFSlash);
                 } else {
                     temp_string.push(c);
