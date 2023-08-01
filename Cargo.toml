@@ -9,3 +9,6 @@ license-file = "LICENSE"
 
 [dependencies]
 greyxml = {path = "./greyxml"}
+
+[workspace]
+members = ["greyxml"]
