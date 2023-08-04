@@ -284,14 +284,15 @@ impl Element<Item> {
                     match new_node.as_str() {
                         "title" => {
                             item.title =
-                                Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
                         }
                         "link" => {
-                            item.link = Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                            item.link =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
                         }
                         "description" => {
                             item.description =
-                                Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
                         }
                         "author" => {
                             item.author =

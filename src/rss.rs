@@ -92,9 +92,9 @@ pub struct Channel {
 // https://www.rssboard.org/rss-specification#hrelementsOfLtitemgt
 #[derive(Default, Debug)]
 pub struct Item {
-    pub(crate) title: Element<String>,
-    pub(crate) link: Element<String>,
-    pub(crate) description: Element<String>,
+    pub(crate) title: Option<Element<String>>,
+    pub(crate) link: Option<Element<String>>,
+    pub(crate) description: Option<Element<String>>,
     pub(crate) author: Option<Element<String>>,
     pub(crate) category: Option<Element<String>>,
     pub(crate) enclosure: Option<Element<String>>,
