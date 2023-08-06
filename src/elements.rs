@@ -383,7 +383,13 @@ impl Element<EncodedContent> {
                     looking_for_attributes = false;
                     elements.push(Element::<String>::serialize(tokens.next().unwrap(), tokens));
                 }
-                Tokens::Text(text) => content = text,
+                Tokens::Text(text) => {
+                    elements.push(Element {
+                        name: "p".into(),
+                        attributes: vec![],
+                        data: text,
+                    });
+                }
                 Tokens::CloseNode(close) => {
                     looking_for_attributes = false;
                     if node == close {
