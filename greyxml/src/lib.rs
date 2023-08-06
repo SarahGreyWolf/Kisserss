@@ -42,17 +42,17 @@ pub fn lex(stream: String) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                 if peekable.peek() == Some(&'?') {
                     in_simple_block = true;
                 }
-                if peekable.peek() == Some(&'/') {
-                    if !temp_string.is_empty() {
-                        current_span.length -= 1;
-                        if current_span.column >= current_span.length {
-                            current_span.column -= current_span.length;
-                        }
-                        lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                        current_span.column += current_span.length;
-                        current_span.length = 1;
-                        temp_string = String::new();
+                if !temp_string.is_empty() {
+                    current_span.length -= 1;
+                    if current_span.column >= current_span.length {
+                        current_span.column -= current_span.length;
                     }
+                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
+                    current_span.column += current_span.length;
+                    current_span.length = 1;
+                    temp_string = String::new();
+                }
+                if peekable.peek() == Some(&'/') {
                     lexed.push(Lexicals::OpenArrow(current_span.clone()));
                     current_span.column += 1;
                     current_span.length = 1;

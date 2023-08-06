@@ -28,6 +28,12 @@ fn rss() -> TestResult<()> {
 }
 
 #[test]
+fn repo_rss() -> TestResult<()> {
+    test_against_file("./tests/kisserss.rss", "./tests/kisserss.rss.output")?;
+    Ok(())
+}
+
+#[test]
 fn html() -> TestResult<()> {
     test_against_file("./tests/example.html", "./tests/example.html.output")?;
     Ok(())
