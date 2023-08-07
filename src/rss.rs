@@ -5,9 +5,9 @@ type RssResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Debug)]
 pub struct Feed {
-    version: f32,
-    specs: Option<Vec<(String, String)>>,
-    channel: Element<Channel>,
+    pub version: f32,
+    pub specs: Option<Vec<(String, String)>>,
+    pub channel: Element<Channel>,
 }
 
 impl Feed {

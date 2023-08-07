@@ -5,9 +5,9 @@ use crate::rss::{Channel, EncodedContent, Image, Item};
 
 #[derive(Debug)]
 pub struct Element<T: Default> {
-    name: String,
-    attributes: Vec<(String, String)>,
-    data: T,
+    pub name: String,
+    pub attributes: Vec<(String, String)>,
+    pub data: T,
 }
 
 impl Element<String> {
