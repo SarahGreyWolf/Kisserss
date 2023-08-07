@@ -115,20 +115,28 @@ pub fn lex(stream: String) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                     in_q_block = false;
                     in_block = true;
                 }
-                if !temp_string.is_empty() {
-                    current_span.length -= 1;
-                    current_span.column -= current_span.length;
-                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                    current_span.column += current_span.length;
-                    current_span.length = 1;
-                    temp_string = String::new();
+                if peekable.peek() == Some(&'>') || peekable.peek() == Some(&']') {
+                    if !temp_string.is_empty() {
+                        current_span.length -= 1;
+                        current_span.column -= current_span.length;
+                        lexed.push(Lexicals::Text(temp_string, current_span.clone()));
+                        current_span.column += current_span.length;
+                        current_span.length = 1;
+                        temp_string = String::new();
+                    }
+                    lexed.push(Lexicals::RightSquareBracket(current_span.clone()));
+                    current_span.length = 0;
+                } else {
+                    temp_string.push(c);
                 }
-                lexed.push(Lexicals::RightSquareBracket(current_span.clone()));
-                current_span.length = 0;
             }
             '!' => {
-                lexed.push(Lexicals::Bang(current_span.clone()));
-                current_span.length = 0;
+                if in_block || in_q_block || in_simple_block {
+                    lexed.push(Lexicals::Bang(current_span.clone()));
+                    current_span.length = 0;
+                } else {
+                    temp_string.push(c);
+                }
             }
             '=' => {
                 if in_quote {
