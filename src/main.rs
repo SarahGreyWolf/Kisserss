@@ -19,6 +19,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 use reqwest::blocking::get;
 
+mod atom;
 mod elements;
 mod rss;
 
@@ -119,6 +120,11 @@ impl StatefulList<(String, usize)> {
     }
 }
 
+enum FeedType {
+    Rss(rss::Feed),
+    Atom(atom::Feed),
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut input = String::new();
     let mut args = env::args();
@@ -134,12 +140,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             // FIXME: Handle Errors
             input = get_web_feed(&path_string)?;
         } else {
-            let path = PathBuf::from(path_string);
+            let path = PathBuf::from(path_string.clone());
             let mut file = File::open(path)?;
             file.read_to_string(&mut input)?;
         }
-        let feed = rss::Feed::serialize(&input)?;
-        feeds.push(feed);
+        if path_string.ends_with(".atom") {
+            feeds.push(FeedType::Atom(atom::Feed::serialize(&input)?));
+        } else {
+            feeds.push(FeedType::Rss(rss::Feed::serialize(&input)?));
+        }
     }
 
     /*
@@ -187,7 +196,7 @@ fn restore_terminal(
 
 fn run(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    feeds: Vec<rss::Feed>,
+    feeds: Vec<FeedType>,
 ) -> Result<(), Box<dyn Error>> {
     let mut feeds_index: StatefulList<String> =
         StatefulList::with_items(vec!["Kisserss".into(), "DaisyUniverse".into()], true);
@@ -196,7 +205,10 @@ fn run(
         feeds
             .iter()
             .enumerate()
-            .map(|(index, item)| (item.channel.data.title.data.clone(), index))
+            .map(|(index, feed)| match feed {
+                FeedType::Rss(rss) => (rss.channel.data.title.data.clone(), index),
+                FeedType::Atom(atom) => (atom.contents.title.data.clone(), index),
+            })
             .collect(),
         true,
     );
@@ -206,33 +218,43 @@ fn run(
     };
 
     let mut feed_items = StatefulList::with_items(
-        feeds[active_feed_index]
-            .channel
-            .data
-            .items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                if let Some(ref title) = item.data.title {
-                    (title.data.clone(), index)
-                } else {
-                    if let Some(ref date) = item.data.pub_date {
-                        (date.data.clone(), index)
+        match feeds[active_feed_index] {
+            FeedType::Rss(ref rss) => rss
+                .channel
+                .data
+                .items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    if let Some(ref title) = item.data.title {
+                        (title.data.clone(), index)
                     } else {
-                        (String::new(), 0)
+                        if let Some(ref date) = item.data.pub_date {
+                            (date.data.clone(), index)
+                        } else {
+                            (String::new(), 0)
+                        }
                     }
-                }
-            })
-            .filter(|(string, _)| !string.is_empty())
-            .collect(),
+                })
+                .filter(|(string, _)| !string.is_empty())
+                .collect(),
+            FeedType::Atom(ref atom) => atom
+                .contents
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    if let Some(ref entry) = item.data {
+                        (entry.title.data.clone(), index)
+                    } else {
+                        (String::new(), index)
+                    }
+                })
+                .filter(|(string, _)| !string.is_empty())
+                .collect(),
+        },
         false,
     );
-    /*
-    let mut feed_items: StatefulList<String> = StatefulList::with_items(
-        vec!["Adding a LICENSE file".into(), "Initial Commit".into()],
-        false,
-    );
-    */
     let global_block = Block::new().borders(Borders::ALL).title("Kisserss");
     let inner_block = Block::new().borders(Borders::TOP);
     let feeds_block = Block::new().borders(Borders::RIGHT);
@@ -252,25 +274,41 @@ fn run(
                 feed_items.active = false;
                 if active_feed_changed {
                     feed_items = StatefulList::with_items(
-                        feeds[active_feed_index]
-                            .channel
-                            .data
-                            .items
-                            .iter()
-                            .enumerate()
-                            .map(|(index, item)| {
-                                if let Some(ref title) = item.data.title {
-                                    (title.data.clone(), index)
-                                } else {
-                                    if let Some(ref date) = item.data.pub_date {
-                                        (date.data.clone(), index)
+                        match feeds[active_feed_index] {
+                            FeedType::Rss(ref rss) => rss
+                                .channel
+                                .data
+                                .items
+                                .iter()
+                                .enumerate()
+                                .map(|(index, item)| {
+                                    if let Some(ref title) = item.data.title {
+                                        (title.data.clone(), index)
                                     } else {
-                                        (String::new(), 0)
+                                        if let Some(ref date) = item.data.pub_date {
+                                            (date.data.clone(), index)
+                                        } else {
+                                            (String::new(), 0)
+                                        }
                                     }
-                                }
-                            })
-                            .filter(|(string, _)| !string.is_empty())
-                            .collect(),
+                                })
+                                .filter(|(string, _)| !string.is_empty())
+                                .collect(),
+                            FeedType::Atom(ref atom) => atom
+                                .contents
+                                .entries
+                                .iter()
+                                .enumerate()
+                                .map(|(index, item)| {
+                                    if let Some(ref entry) = item.data {
+                                        (entry.title.data.clone(), index)
+                                    } else {
+                                        (String::new(), index)
+                                    }
+                                })
+                                .filter(|(string, _)| !string.is_empty())
+                                .collect(),
+                        },
                         false,
                     );
                     active_feed_changed = false;
@@ -303,14 +341,27 @@ fn run(
             let items_list = feed_items_clone.to_list_tuple();
 
             let content = if let Some(selected) = feed_items.state.selected() {
-                if let Some(ref desc) = feeds[active_feed_index].channel.data.items
-                    [feed_items.items[selected].1]
-                    .data
-                    .description
-                {
-                    Paragraph::new(desc.data.clone())
-                } else {
-                    Paragraph::new(String::new())
+                let feed = &feeds[active_feed_index];
+                match feed {
+                    FeedType::Rss(rss) => {
+                        if let Some(ref desc) = rss.channel.data.items[feed_items.items[selected].1]
+                            .data
+                            .description
+                        {
+                            Paragraph::new(desc.data.clone())
+                        } else {
+                            Paragraph::new(String::new())
+                        }
+                    }
+                    FeedType::Atom(atom) => {
+                        if let Some(ref entry) =
+                            atom.contents.entries[feed_items.items[selected].1].data
+                        {
+                            Paragraph::new(entry.content.data.clone())
+                        } else {
+                            Paragraph::new(String::new())
+                        }
+                    }
                 }
             } else {
                 Paragraph::new(String::new())

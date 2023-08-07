@@ -1,9 +1,10 @@
 use greyxml::Tokens;
 use std::iter::Peekable;
 
+use crate::atom;
 use crate::rss::{Channel, EncodedContent, Image, Item};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Element<T: Default> {
     pub name: String,
     pub attributes: Vec<(String, String)>,
@@ -60,16 +61,6 @@ impl Element<String> {
     }
 }
 
-impl Default for Element<String> {
-    fn default() -> Self {
-        Element {
-            name: "".into(),
-            attributes: vec![],
-            data: "".into(),
-        }
-    }
-}
-
 impl Element<u32> {
     pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
     where
@@ -119,6 +110,8 @@ impl Element<u32> {
         }
     }
 }
+
+// RSS
 
 impl Element<Channel> {
     pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
@@ -485,6 +478,384 @@ impl Element<Image> {
             name: node,
             attributes,
             data: image,
+        }
+    }
+}
+
+// ATOM
+/* TEMPLATE
+impl Element<atom::<INSERT>> {
+    pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
+    where
+        I: std::iter::Iterator<Item = Tokens>,
+    {
+        let Tokens::OpenNode(node) = token else {
+            todo!("Implement Error Handling of Incorrect Node: {token:?}");
+        };
+
+        let mut attributes = vec![];
+
+        let mut <INSERT> = atom::<INSERT>::default();
+
+        let mut looking_for_attributes = true;
+
+        while let Some(token) = tokens.peek() {
+            let token = token.clone();
+            match token {
+                Tokens::ParameterName(name) => {
+                    if looking_for_attributes {
+                        tokens.next();
+                        if let Some(Tokens::ParameterValue(value)) = tokens.next() {
+                            attributes.push((name, value));
+                            continue;
+                        }
+                    } else {
+                        tokens.next();
+                    }
+                }
+                Tokens::OpenNode(new_node) => {
+                    looking_for_attributes = false;
+                    match new_node.as_str() {
+                        all @ _ => {
+                            println!("Unimplemented: {all:?}");
+                        }
+                    }
+                }
+                Tokens::CloseNode(close) => {
+                    if close == node {
+                        break;
+                    }
+                }
+                _ => {
+                    looking_for_attributes = false;
+                }
+            }
+            tokens.next();
+        }
+
+        Self {
+            name: node,
+            attributes,
+            data: <INSERT>,
+        }
+    }
+}
+*/
+
+impl Element<atom::Person> {
+    pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
+    where
+        I: std::iter::Iterator<Item = Tokens>,
+    {
+        let Tokens::OpenNode(node) = token else {
+            todo!("Implement Error Handling of Incorrect Node: {token:?}");
+        };
+
+        let mut attributes = vec![];
+
+        let mut person = atom::Person::default();
+
+        let mut looking_for_attributes = true;
+
+        while let Some(token) = tokens.peek() {
+            let token = token.clone();
+            match token {
+                Tokens::ParameterName(name) => {
+                    if looking_for_attributes {
+                        tokens.next();
+                        if let Some(Tokens::ParameterValue(value)) = tokens.next() {
+                            attributes.push((name, value));
+                            continue;
+                        }
+                    } else {
+                        tokens.next();
+                    }
+                }
+                Tokens::OpenNode(new_node) => {
+                    looking_for_attributes = false;
+                    match new_node.as_str() {
+                        "name" => {
+                            person.name =
+                                Element::<String>::serialize(tokens.next().unwrap(), tokens);
+                        }
+                        "uri" => {
+                            person.uri =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens));
+                        }
+                        "email" => {
+                            person.email =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens));
+                        }
+                        all @ _ => {
+                            println!("Unimplemented: {all:?}");
+                        }
+                    }
+                }
+                Tokens::CloseNode(close) => {
+                    if close == node {
+                        break;
+                    }
+                }
+                _ => {
+                    looking_for_attributes = false;
+                }
+            }
+            tokens.next();
+        }
+
+        Self {
+            name: node,
+            attributes,
+            data: person,
+        }
+    }
+}
+
+impl Element<atom::Category> {
+    pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
+    where
+        I: std::iter::Iterator<Item = Tokens>,
+    {
+        let Tokens::OpenNode(node) = token else {
+            todo!("Implement Error Handling of Incorrect Node: {token:?}");
+        };
+
+        let mut attributes = vec![];
+
+        let mut category = atom::Category::default();
+
+        let mut looking_for_attributes = true;
+
+        while let Some(token) = tokens.peek() {
+            let token = token.clone();
+            match token {
+                Tokens::ParameterName(name) => {
+                    if looking_for_attributes {
+                        tokens.next();
+                        if let Some(Tokens::ParameterValue(value)) = tokens.next() {
+                            attributes.push((name, value));
+                            continue;
+                        }
+                    } else {
+                        tokens.next();
+                    }
+                }
+                Tokens::OpenNode(new_node) => {
+                    looking_for_attributes = false;
+                    match new_node.as_str() {
+                        all @ _ => {
+                            println!("Unimplemented: {all:?}");
+                        }
+                    }
+                }
+                Tokens::CloseNode(close) => {
+                    if close == node {
+                        break;
+                    }
+                }
+                _ => {
+                    looking_for_attributes = false;
+                }
+            }
+            tokens.next();
+        }
+
+        Self {
+            name: node,
+            attributes,
+            data: category,
+        }
+    }
+}
+
+impl Element<atom::Link> {
+    pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
+    where
+        I: std::iter::Iterator<Item = Tokens>,
+    {
+        let Tokens::OpenNode(node) = token else {
+            todo!("Implement Error Handling of Incorrect Node: {token:?}");
+        };
+
+        let mut attributes = vec![];
+
+        let mut link = atom::Link::default();
+
+        let mut looking_for_attributes = true;
+
+        while let Some(token) = tokens.peek() {
+            let token = token.clone();
+            match token {
+                Tokens::ParameterName(name) => {
+                    if looking_for_attributes {
+                        tokens.next();
+                        if let Some(Tokens::ParameterValue(value)) = tokens.next() {
+                            attributes.push((name, value));
+                            continue;
+                        }
+                    } else {
+                        tokens.next();
+                    }
+                }
+                Tokens::OpenNode(new_node) => {
+                    looking_for_attributes = false;
+                    match new_node.as_str() {
+                        all @ _ => {
+                            println!("Unimplemented: {all:?}");
+                        }
+                    }
+                }
+                Tokens::Text(text) => {
+                    looking_for_attributes = false;
+                    link.0 = Some(text);
+                }
+                Tokens::CloseNode(close) => {
+                    if close == node {
+                        break;
+                    }
+                }
+                _ => {
+                    looking_for_attributes = false;
+                }
+            }
+            tokens.next();
+        }
+
+        Self {
+            name: node,
+            attributes,
+            data: link,
+        }
+    }
+}
+
+impl Element<Option<atom::Entry>> {
+    pub fn serialize<I>(token: Tokens, tokens: &mut Peekable<I>) -> Self
+    where
+        I: std::iter::Iterator<Item = Tokens>,
+    {
+        let Tokens::OpenNode(node) = token else {
+            todo!("Implement Error Handling of Incorrect Node: {token:?}");
+        };
+
+        let mut attributes = vec![];
+
+        let mut entry = atom::Entry::default();
+
+        let mut looking_for_attributes = true;
+
+        let mut authors = vec![];
+        let mut categories = vec![];
+        let mut contributors = vec![];
+        let mut links = vec![];
+
+        while let Some(token) = tokens.peek() {
+            let token = token.clone();
+            match token {
+                Tokens::ParameterName(name) => {
+                    if looking_for_attributes {
+                        tokens.next();
+                        if let Some(Tokens::ParameterValue(value)) = tokens.next() {
+                            attributes.push((name, value));
+                            continue;
+                        }
+                    } else {
+                        tokens.next();
+                    }
+                }
+                Tokens::OpenNode(new_node) => {
+                    looking_for_attributes = false;
+                    match new_node.as_str() {
+                        "author" => authors.push(Element::<atom::Person>::serialize(
+                            tokens.next().unwrap(),
+                            tokens,
+                        )),
+                        "category" => categories.push(Element::<atom::Category>::serialize(
+                            tokens.next().unwrap(),
+                            tokens,
+                        )),
+                        "content" => {
+                            entry.content =
+                                Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                        }
+                        "contributor" => contributors.push(Element::<atom::Person>::serialize(
+                            tokens.next().unwrap(),
+                            tokens,
+                        )),
+                        "id" => {
+                            entry.id = Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                        }
+                        "link" => links.push(Element::<atom::Link>::serialize(
+                            tokens.next().unwrap(),
+                            tokens,
+                        )),
+                        "published" => {
+                            entry.published =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
+                        }
+                        "rights" => {
+                            entry.rights =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
+                        }
+                        "summary" => {
+                            entry.summary =
+                                Some(Element::<String>::serialize(tokens.next().unwrap(), tokens))
+                        }
+                        "title" => {
+                            entry.title =
+                                Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                        }
+                        "updated" => {
+                            entry.updated =
+                                Element::<String>::serialize(tokens.next().unwrap(), tokens)
+                        }
+                        all @ _ => {
+                            println!("Unimplemented: {all:?}");
+                        }
+                    }
+                }
+                Tokens::CloseNode(close) => {
+                    if close == node {
+                        break;
+                    }
+                }
+                _ => {
+                    looking_for_attributes = false;
+                }
+            }
+            tokens.next();
+        }
+
+        entry.authors = if authors.is_empty() {
+            None
+        } else {
+            Some(authors)
+        };
+
+        entry.contributors = if contributors.is_empty() {
+            None
+        } else {
+            Some(contributors)
+        };
+
+        entry.categories = if categories.is_empty() {
+            None
+        } else {
+            Some(categories)
+        };
+
+        entry.links = if links.is_empty() { None } else { Some(links) };
+
+        let data = if attributes.len() > 0 && entry.title.data.is_empty() {
+            None
+        } else {
+            Some(entry)
+        };
+
+        Self {
+            name: node,
+            attributes,
+            data,
         }
     }
 }
