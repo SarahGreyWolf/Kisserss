@@ -1,12 +1,12 @@
 #![feature(let_chains)]
 
 use std::env;
-use std::io::{self, Read, Stdout};
+use std::io::{self, Read, Stdout, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{error::Error, fs::File};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, ModifierKeyCode};
@@ -120,6 +120,7 @@ impl StatefulList<(String, usize)> {
     }
 }
 
+#[derive(Debug)]
 enum FeedType {
     Rss(rss::Feed),
     Atom(atom::Feed),
@@ -132,6 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut feeds = vec![];
 
+    // TODO: Multithreaded loading?
     for _ in 0..args.len() {
         let Some(path_string) = args.next() else {
             panic!("No path given");
@@ -158,16 +160,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     dbg!(tokens);
     */
 
-    //let feed = rss::Feed::serialize(&input)?;
+    //let feed = &feeds[0];
     //dbg!(feed);
 
     let mut terminal = setup_terminal()?;
-    match run(&mut terminal, feeds) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("Error Occured: {e}");
-        }
-    }
+    let mut app = App::new(feeds, &mut terminal);
+    app.run()?;
 
     restore_terminal(&mut terminal)?;
 
@@ -194,87 +192,99 @@ fn restore_terminal(
     Ok(terminal.show_cursor()?)
 }
 
-fn run(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+struct App<'a> {
     feeds: Vec<FeedType>,
-) -> Result<(), Box<dyn Error>> {
-    let mut feeds_index: StatefulList<String> =
-        StatefulList::with_items(vec!["Kisserss".into(), "DaisyUniverse".into()], true);
+    feeds_list: StatefulList<(String, usize)>,
+    active_feed: usize,
+    feed_items: StatefulList<(String, usize)>,
+    active_item: usize,
+    active_window: usize,
+    active_feed_changed: bool,
+    terminal: &'a mut Terminal<CrosstermBackend<Stdout>>,
+}
 
-    let mut feeds_index = StatefulList::with_items(
-        feeds
-            .iter()
-            .enumerate()
-            .map(|(index, feed)| match feed {
-                FeedType::Rss(rss) => (rss.channel.data.title.data.clone(), index),
-                FeedType::Atom(atom) => (atom.contents.title.data.clone(), index),
-            })
-            .collect(),
-        true,
-    );
-
-    let Some(active_feed_index) = feeds_index.state.selected() else {
-        panic!("No feed was active by default");
-    };
-
-    let mut feed_items = StatefulList::with_items(
-        match feeds[active_feed_index] {
-            FeedType::Rss(ref rss) => rss
-                .channel
-                .data
-                .items
+impl<'a> App<'a> {
+    pub fn new(
+        feeds: Vec<FeedType>,
+        terminal: &'a mut Terminal<CrosstermBackend<Stdout>>,
+    ) -> App<'a> {
+        let feeds_list = StatefulList::with_items(
+            feeds
                 .iter()
                 .enumerate()
-                .map(|(index, item)| {
-                    if let Some(ref title) = item.data.title {
-                        (title.data.clone(), index)
-                    } else {
-                        if let Some(ref date) = item.data.pub_date {
-                            (date.data.clone(), index)
+                .map(|(index, feed)| match feed {
+                    FeedType::Rss(rss) => (rss.channel.data.title.data.clone(), index),
+                    FeedType::Atom(atom) => (atom.contents.title.data.clone(), index),
+                })
+                .collect(),
+            true,
+        );
+        let Some(active_feed_index) = feeds_list.state.selected() else {
+            panic!("No feed was active by default");
+        };
+        let feed_items = StatefulList::with_items(
+            match feeds[active_feed_index] {
+                FeedType::Rss(ref rss) => rss
+                    .channel
+                    .data
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        if let Some(ref title) = item.data.title {
+                            (title.data.clone(), index)
                         } else {
-                            (String::new(), 0)
+                            if let Some(ref date) = item.data.pub_date {
+                                (date.data.clone(), index)
+                            } else {
+                                (String::new(), 0)
+                            }
                         }
-                    }
-                })
-                .filter(|(string, _)| !string.is_empty())
-                .collect(),
-            FeedType::Atom(ref atom) => atom
-                .contents
-                .entries
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    if let Some(ref entry) = item.data {
-                        (entry.title.data.clone(), index)
-                    } else {
-                        (String::new(), index)
-                    }
-                })
-                .filter(|(string, _)| !string.is_empty())
-                .collect(),
-        },
-        false,
-    );
-    let global_block = Block::new().borders(Borders::ALL).title("Kisserss");
-    let inner_block = Block::new().borders(Borders::TOP);
-    let feeds_block = Block::new().borders(Borders::RIGHT);
-    let content_block = Block::new().borders(Borders::TOP).title("Content");
+                    })
+                    .filter(|(string, _)| !string.is_empty())
+                    .collect(),
+                FeedType::Atom(ref atom) => atom
+                    .contents
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        if let Some(ref entry) = item.data {
+                            (entry.title.data.clone(), index)
+                        } else {
+                            (String::new(), index)
+                        }
+                    })
+                    .filter(|(string, _)| !string.is_empty())
+                    .collect(),
+            },
+            false,
+        );
 
-    let mut active_window = 0;
-    let mut active_feed_changed = false;
+        Self {
+            feeds,
+            feeds_list,
+            active_feed: active_feed_index,
+            feed_items,
+            active_item: 0,
+            active_window: 0,
+            active_feed_changed: false,
+            terminal,
+        }
+    }
 
-    Ok(loop {
-        terminal.draw(|frame| {
-            let Some(active_feed_index) = feeds_index.state.selected() else {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
+        loop {
+            let Some(active_feed_index) = self.feeds_list.state.selected() else {
                 panic!("No feed was active");
             };
-            // FIXME: THIS IS NOT IDEAL Move into App State
-            if active_window == 0 {
-                feeds_index.active = true;
-                feed_items.active = false;
-                if active_feed_changed {
-                    feed_items = StatefulList::with_items(
-                        match feeds[active_feed_index] {
+            self.active_feed = active_feed_index;
+            if self.active_window == 0 {
+                self.feeds_list.active = true;
+                self.feed_items.active = false;
+                if self.active_feed_changed {
+                    self.feed_items = StatefulList::with_items(
+                        match self.feeds[self.active_feed] {
                             FeedType::Rss(ref rss) => rss
                                 .channel
                                 .data
@@ -311,19 +321,73 @@ fn run(
                         },
                         false,
                     );
-                    active_feed_changed = false;
+                    self.active_feed_changed = false;
                 }
-            } else if active_window == 1 {
-                feeds_index.active = false;
-                feed_items.active = true;
+            } else if self.active_window == 1 {
+                self.feeds_list.active = false;
+                self.feed_items.active = true;
             } else {
-                feeds_index.active = false;
-                feed_items.active = false;
+                self.feeds_list.active = false;
+                self.feed_items.active = false;
             }
+            if self.events()? {
+                break;
+            }
+            self.render()?;
+        }
+        Ok(())
+    }
+
+    fn events(&mut self) -> Result<bool, Box<dyn Error>> {
+        if event::poll(Duration::from_millis(250))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match key.code {
+                        KeyCode::Char('q') => return Ok(true),
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            return Ok(true);
+                        }
+                        KeyCode::Char('s') | KeyCode::Down => {
+                            if self.active_window == 0 {
+                                self.feeds_list.next();
+                                self.active_feed_changed = true;
+                            } else if self.active_window == 1 {
+                                self.feed_items.next();
+                            }
+                        }
+                        KeyCode::Char('w') | KeyCode::Up => {
+                            if self.active_window == 0 {
+                                self.feeds_list.previous();
+                                self.active_feed_changed = true;
+                            } else if self.active_window == 1 {
+                                self.feed_items.previous();
+                            }
+                        }
+                        KeyCode::Tab => {
+                            if self.active_window == 2 {
+                                self.active_window = 0;
+                                return Ok(false);
+                            }
+                            self.active_window += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    fn render(&mut self) -> Result<(), Box<dyn Error>> {
+        self.terminal.draw(|f| {
+            let global_block = Block::new().borders(Borders::ALL).title("Kisserss");
+            let inner_block = Block::new().borders(Borders::TOP);
+            let feeds_block = Block::new().borders(Borders::RIGHT);
+            let content_block = Block::new().borders(Borders::TOP).title("Content");
             let outer_layout = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Max(1), Constraint::Min(1)].as_ref())
-                .split(global_block.inner(frame.size()));
+                .split(global_block.inner(f.size()));
             let inner_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
@@ -334,17 +398,18 @@ fn run(
                 .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
                 .split(inner_layout[1]);
 
-            let feeds_clone = feeds_index.clone();
-            let feed_items_clone = feed_items.clone();
+            let feeds_clone = self.feeds_list.clone();
+            let feed_items_clone = self.feed_items.clone();
 
             let feeds_list = feeds_clone.to_list_tuple();
             let items_list = feed_items_clone.to_list_tuple();
 
-            let content = if let Some(selected) = feed_items.state.selected() {
-                let feed = &feeds[active_feed_index];
+            let content = if let Some(selected) = self.feed_items.state.selected() {
+                let feed = &self.feeds[self.active_feed];
                 match feed {
                     FeedType::Rss(rss) => {
-                        if let Some(ref desc) = rss.channel.data.items[feed_items.items[selected].1]
+                        if let Some(ref desc) = rss.channel.data.items
+                            [self.feed_items.items[selected].1]
                             .data
                             .description
                         {
@@ -355,7 +420,7 @@ fn run(
                     }
                     FeedType::Atom(atom) => {
                         if let Some(ref entry) =
-                            atom.contents.entries[feed_items.items[selected].1].data
+                            atom.contents.entries[self.feed_items.items[selected].1].data
                         {
                             Paragraph::new(entry.content.data.clone())
                         } else {
@@ -367,57 +432,22 @@ fn run(
                 Paragraph::new(String::new())
             };
 
-            frame.render_widget(global_block.clone(), frame.size());
-            frame.render_widget(inner_block.clone(), outer_layout[1]);
-            frame.render_widget(Paragraph::new("F1: Add Feed"), outer_layout[0]);
-            frame.render_stateful_widget(
+            f.render_widget(global_block.clone(), f.size());
+            f.render_widget(inner_block.clone(), outer_layout[1]);
+            f.render_widget(Paragraph::new("F1: Add Feed"), outer_layout[0]);
+            f.render_stateful_widget(
                 feeds_list.block(feeds_block.clone()),
                 inner_layout[0],
-                &mut feeds_index.state.clone(),
+                &mut self.feeds_list.state.clone(),
             );
-            frame.render_stateful_widget(items_list, content_layout[0], &mut feed_items.state);
-            frame.render_widget(
+            f.render_stateful_widget(items_list, content_layout[0], &mut self.feed_items.state);
+            f.render_widget(
                 content
                     .block(content_block.clone())
                     .wrap(Wrap { trim: false }),
                 content_layout[1],
             );
         })?;
-        if event::poll(Duration::from_millis(250))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => break,
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            break;
-                        }
-                        KeyCode::Char('s') | KeyCode::Down => {
-                            if active_window == 0 {
-                                feeds_index.next();
-                                active_feed_changed = true;
-                            } else if active_window == 1 {
-                                feed_items.next();
-                            }
-                        }
-                        KeyCode::Char('w') | KeyCode::Up => {
-                            if active_window == 0 {
-                                feeds_index.previous();
-                                active_feed_changed = true;
-                            } else if active_window == 1 {
-                                feed_items.previous();
-                            }
-                        }
-                        KeyCode::Tab => {
-                            if active_window == 2 {
-                                active_window = 0;
-                                continue;
-                            }
-                            active_window += 1;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    })
+        Ok(())
+    }
 }
