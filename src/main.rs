@@ -197,9 +197,10 @@ struct App<'a> {
     feeds_list: StatefulList<(String, usize)>,
     active_feed: usize,
     feed_items: StatefulList<(String, usize)>,
-    active_item: usize,
     active_window: usize,
     active_feed_changed: bool,
+    show_popup: bool,
+    input: String,
     terminal: &'a mut Terminal<CrosstermBackend<Stdout>>,
 }
 
@@ -266,9 +267,10 @@ impl<'a> App<'a> {
             feeds_list,
             active_feed: active_feed_index,
             feed_items,
-            active_item: 0,
             active_window: 0,
             active_feed_changed: false,
+            show_popup: false,
+            input: String::new(),
             terminal,
         }
     }
@@ -342,35 +344,81 @@ impl<'a> App<'a> {
         if event::poll(Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => return Ok(true),
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            return Ok(true);
-                        }
-                        KeyCode::Char('s') | KeyCode::Down => {
-                            if self.active_window == 0 {
-                                self.feeds_list.next();
-                                self.active_feed_changed = true;
-                            } else if self.active_window == 1 {
-                                self.feed_items.next();
+                    if self.show_popup {
+                        match key.code {
+                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                return Ok(true);
                             }
-                        }
-                        KeyCode::Char('w') | KeyCode::Up => {
-                            if self.active_window == 0 {
-                                self.feeds_list.previous();
-                                self.active_feed_changed = true;
-                            } else if self.active_window == 1 {
-                                self.feed_items.previous();
+                            KeyCode::Char(insert) => {
+                                self.input.push(insert);
                             }
-                        }
-                        KeyCode::Tab => {
-                            if self.active_window == 2 {
-                                self.active_window = 0;
-                                return Ok(false);
+                            KeyCode::Backspace => {
+                                self.input.pop();
                             }
-                            self.active_window += 1;
+                            KeyCode::Enter => {
+                                if self.input.is_empty() {
+                                    self.show_popup = false;
+                                    return Ok(false);
+                                }
+                                if !self.input.starts_with("http://")
+                                    && !self.input.starts_with("https://")
+                                {
+                                    self.show_popup = false;
+                                    return Ok(false);
+                                }
+                                let input = get_web_feed(&self.input)?;
+                                let feed = if self.input.ends_with(".atom") {
+                                    FeedType::Atom(atom::Feed::serialize(&input)?)
+                                } else {
+                                    FeedType::Rss(rss::Feed::serialize(&input)?)
+                                };
+                                self.feeds_list.items.push(match feed {
+                                    FeedType::Rss(ref rss) => {
+                                        (rss.channel.data.title.data.clone(), self.feeds.len())
+                                    }
+                                    FeedType::Atom(ref atom) => {
+                                        (atom.contents.title.data.clone(), self.feeds.len())
+                                    }
+                                });
+                                self.feeds.push(feed);
+                                self.show_popup = false;
+                            }
+                            _ => {}
                         }
-                        _ => {}
+                    } else {
+                        match key.code {
+                            KeyCode::Char('q') => return Ok(true),
+                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                return Ok(true);
+                            }
+                            KeyCode::Char('s') | KeyCode::Down => {
+                                if self.active_window == 0 {
+                                    self.feeds_list.next();
+                                    self.active_feed_changed = true;
+                                } else if self.active_window == 1 {
+                                    self.feed_items.next();
+                                }
+                            }
+                            KeyCode::Char('w') | KeyCode::Up => {
+                                if self.active_window == 0 {
+                                    self.feeds_list.previous();
+                                    self.active_feed_changed = true;
+                                } else if self.active_window == 1 {
+                                    self.feed_items.previous();
+                                }
+                            }
+                            KeyCode::Tab => {
+                                if self.active_window == 2 {
+                                    self.active_window = 0;
+                                    return Ok(false);
+                                }
+                                self.active_window += 1;
+                            }
+                            KeyCode::F(1) => {
+                                self.show_popup = !self.show_popup;
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -447,7 +495,43 @@ impl<'a> App<'a> {
                     .wrap(Wrap { trim: false }),
                 content_layout[1],
             );
+            if self.show_popup {
+                let block = Block::default().title("Popup").borders(Borders::ALL);
+                let area = centered_rect(70, 10, f.size());
+                let center = centered_rect(90, 100, block.inner(area));
+                f.render_widget(Clear, area);
+                f.render_widget(block, area);
+                f.render_widget(Paragraph::new(&*self.input), center);
+            }
         })?;
         Ok(())
     }
+}
+
+// Taken from https://github.com/ratatui-org/ratatui/blob/main/examples/popup.rs
+// No need to recreate the wheel, credit goes to https://github.com/fdehau
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }

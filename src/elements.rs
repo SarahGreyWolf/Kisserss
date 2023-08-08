@@ -217,7 +217,7 @@ impl Element<Channel> {
                                 Some(Element::<Image>::serialize(tokens.next().unwrap(), tokens));
                         }
                         all @ _ => {
-                            println!("Unimplemented: {all:?}");
+                            //println!("Unimplemented: {all:?}");
                         }
                     }
                 }
@@ -458,7 +458,7 @@ impl Element<Image> {
                             Some(Element::<u32>::serialize(tokens.next().unwrap(), tokens))
                     }
                     other @ _ => {
-                        println!("Unexpected/Unimplemented Image Element: {other:?}")
+                        //println!("Unexpected/Unimplemented Image Element: {other:?}")
                     }
                 },
                 Tokens::CloseNode(close) => {
@@ -587,7 +587,7 @@ impl Element<atom::Person> {
                                 Some(Element::<String>::serialize(tokens.next().unwrap(), tokens));
                         }
                         all @ _ => {
-                            println!("Unimplemented: {all:?}");
+                            //println!("Unimplemented: {all:?}");
                         }
                     }
                 }
@@ -644,7 +644,7 @@ impl Element<atom::Category> {
                     looking_for_attributes = false;
                     match new_node.as_str() {
                         all @ _ => {
-                            println!("Unimplemented: {all:?}");
+                            //println!("Unimplemented: {all:?}");
                         }
                     }
                 }
@@ -701,7 +701,7 @@ impl Element<atom::Link> {
                     looking_for_attributes = false;
                     match new_node.as_str() {
                         all @ _ => {
-                            println!("Unimplemented: {all:?}");
+                            //println!("Unimplemented: {all:?}");
                         }
                     }
                 }
@@ -810,7 +810,7 @@ impl Element<Option<atom::Entry>> {
                                 Element::<String>::serialize(tokens.next().unwrap(), tokens)
                         }
                         all @ _ => {
-                            println!("Unimplemented: {all:?}");
+                            //println!("Unimplemented: {all:?}");
                         }
                     }
                 }
