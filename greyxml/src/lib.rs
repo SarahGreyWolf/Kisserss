@@ -22,7 +22,7 @@ pub struct Span {
     pub length: usize,
 }
 
-pub fn lex(stream: String) -> Result<Vec<Lexicals>, Box<dyn Error>> {
+pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
     let mut lexed = vec![];
     let mut peekable = stream.chars().peekable();
     let mut in_block = false;
@@ -184,6 +184,9 @@ pub fn lex(stream: String) -> Result<Vec<Lexicals>, Box<dyn Error>> {
             },
             */
             '\n' => {
+                if !temp_string.is_empty() {
+                    temp_string.push('\n');
+                }
                 current_span.row += 1;
                 current_span.column = 0;
             }

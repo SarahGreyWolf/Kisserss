@@ -12,7 +12,7 @@ fn test_against_file(test_path: &str, test_output_path: &str) -> TestResult<()> 
     test_file.read_to_string(&mut test_data)?;
     test_output.read_to_string(&mut output)?;
 
-    let lexed = lex(test_data)?;
+    let lexed = lex(&test_data)?;
     let mut iter = lexed.into_iter();
     let tokens = tokenize(&mut iter)?;
 
@@ -24,6 +24,15 @@ fn test_against_file(test_path: &str, test_output_path: &str) -> TestResult<()> 
 #[test]
 fn rss() -> TestResult<()> {
     test_against_file("./tests/test.rss", "./tests/test.rss.output")?;
+    Ok(())
+}
+
+#[test]
+fn sarah_tech_rss() -> TestResult<()> {
+    test_against_file(
+        "./tests/@sarahgreywolf.rss",
+        "./tests/@sarahgreywolf.rss.output",
+    )?;
     Ok(())
 }
 
