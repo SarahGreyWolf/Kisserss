@@ -461,7 +461,8 @@ impl<'a> App<'a> {
                             .data
                             .description
                         {
-                            Paragraph::new(desc.data.clone())
+                            let decoded = decode(&desc.data, false);
+                            Paragraph::new(format(decoded))
                         } else {
                             Paragraph::new(String::new())
                         }
@@ -470,7 +471,8 @@ impl<'a> App<'a> {
                         if let Some(ref entry) =
                             atom.contents.entries[self.feed_items.items[selected].1].data
                         {
-                            Paragraph::new(entry.content.data.clone())
+                            let decoded = decode(&entry.content.data, false);
+                            Paragraph::new(format(decoded))
                         } else {
                             Paragraph::new(String::new())
                         }
@@ -534,4 +536,84 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             .as_ref(),
         )
         .split(popup_layout[1])[1]
+}
+// This isn't ideal
+fn format(content: String) -> Vec<Line<'static>> {
+    let mut lines = vec![];
+    let lexed;
+    match lex(&content) {
+        Ok(lexeded) => lexed = lexeded,
+        Err(e) => {
+            lines.push(Line::from(vec![Span::raw(
+                "Could not lex content {content} due to {e:?}",
+            )]));
+            return lines;
+        }
+    }
+    let tokens;
+    match tokenize(&mut lexed.into_iter()) {
+        Ok(tkns) => tokens = tkns,
+        Err(e) => {
+            lines.push(Line::from(vec![Span::raw(
+                "Could not tokenize content {content} due to {e:?}",
+            )]));
+            return lines;
+        }
+    }
+    let mut peekable = tokens.iter().peekable();
+    let mut in_node: Vec<String> = vec![];
+    let mut is_href = false;
+    let mut current_text = String::new();
+    while let Some(token) = peekable.peek() {
+        let token = *token;
+        peekable.next();
+        match token {
+            greyxml::Tokens::OpenNode(node) => {
+                if node == "br" {
+                    current_text.push('\n');
+                    continue;
+                }
+                if node == "a" && !in_node.contains(&String::from("p")) {
+                    if !current_text.is_empty() {
+                        current_text.push('\n');
+                    }
+                }
+                if node == "span" {
+                    continue;
+                }
+                in_node.push(node.to_string());
+            }
+            greyxml::Tokens::Text(text) => {
+                current_text.push_str(text);
+            }
+            greyxml::Tokens::CloseNode(node) => {
+                if Some(node) == in_node.last() {
+                    in_node.pop();
+                    let decoded = decode(&current_text, true);
+                    let split = decoded.split('\n');
+                    for s in split {
+                        lines.push(Line::from(vec![Span::raw(s.to_string())]));
+                    }
+                    current_text = String::new();
+                }
+            }
+            _ => {}
+        }
+    }
+    lines
+}
+fn decode(content: &str, is_content: bool) -> String {
+    let mut output = if is_content {
+        content.replace("&amp;", "&")
+    } else {
+        String::from(content)
+    };
+    output = output.replace("&#xA;", "\n");
+    output = output.replace("&lt;", "<");
+    output = output.replace("&gt;", ">");
+    output = output.replace("&apos;", "'");
+    output = output.replace("&#39;", "'");
+    output = output.replace("&quot;", "\"");
+    output = output.replace("&#34;", "\"");
+    output
 }
