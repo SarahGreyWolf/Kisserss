@@ -22,26 +22,26 @@ impl Feed {
             panic!("Could not find rss node");
         };
 
-        let Some(token) = tokens_iter.next() else {
+        if let None = tokens_iter.peek() {
             panic!("No more tokens?");
-        };
+        }
 
-        let version: f32 = if token == Tokens::ParameterName("version".into()) {
-            if let Some(Tokens::ParameterValue(v)) = tokens_iter.next() {
-                v.parse().unwrap()
-            } else {
-                0.0
-            }
-        } else {
-            0.0
-        };
-
+        let mut version = 0.0;
         let mut specs = vec![];
 
         while let Some(token) = tokens_iter.peek() {
             let token = token.clone();
             match token {
                 Tokens::ParameterName(name) => {
+                    if name == "version" {
+                        tokens_iter.next();
+                        if let Some(Tokens::ParameterValue(v)) = tokens_iter.next() {
+                            version = v.parse().unwrap();
+                        } else {
+                            version = 0.0;
+                        }
+                        continue;
+                    }
                     tokens_iter.next();
                     if let Some(Tokens::ParameterValue(value)) = tokens_iter.next() {
                         specs.push((name.clone(), value));
