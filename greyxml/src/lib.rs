@@ -22,6 +22,16 @@ pub struct Span {
     pub length: usize,
 }
 
+impl Span {
+    pub fn new() -> Span {
+        Span {
+            row: 1,
+            column: 1,
+            length: 0,
+        }
+    }
+}
+
 pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
     let mut lexed = vec![];
     let mut peekable = stream.chars().peekable();
@@ -31,9 +41,8 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
     let mut is_defining_node_name = false;
     let mut in_quote = false;
     let mut temp_string = String::new();
-    let mut current_span = Span::default();
+    let mut current_span = Span::new();
     while let Some(c) = peekable.peek() {
-        current_span.column += 1;
         let c = *c;
         peekable.next();
         match c {
@@ -43,24 +52,35 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                     in_simple_block = true;
                 }
                 if !temp_string.is_empty() {
-                    current_span.length -= 1;
-                    if current_span.column >= current_span.length {
-                        current_span.column -= current_span.length;
+                    current_span.length -= 2;
+                    temp_string = temp_string.trim_end_matches(" ").to_owned();
+                    if temp_string.ends_with('\n') {
+                        if current_span.row > 0 {
+                            current_span.row -= 1;
+                        }
                     }
-                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                    current_span.column += current_span.length;
-                    current_span.length = 1;
+                    lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                    if temp_string.ends_with('\n') {
+                        current_span.column = 1;
+                        current_span.row += 1;
+                    } else {
+                        current_span.column += current_span.length;
+                    }
+                    current_span.length = 0;
                     temp_string = String::new();
                 }
                 if peekable.peek() == Some(&'/') {
-                    lexed.push(Lexicals::OpenArrow(current_span.clone()));
-                    current_span.column += 1;
                     current_span.length = 1;
+                    lexed.push(Lexicals::OpenArrow(current_span.clone()));
+                    current_span.column += current_span.length;
                     lexed.push(Lexicals::CloseFSlash(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                     peekable.next();
                 } else {
+                    current_span.length = 1;
                     lexed.push(Lexicals::OpenArrow(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                 }
                 is_defining_node_name = true;
@@ -69,28 +89,39 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                 if peekable.peek() == Some(&'>') {
                     in_simple_block = false;
                     lexed.push(Lexicals::ImmediateClose(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                     peekable.next();
                 } else {
                     lexed.push(Lexicals::Question(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                 }
             }
             '>' => {
                 if in_block {
                     if !temp_string.is_empty() {
-                        current_span.length -= 1;
-                        if current_span.column >= current_span.length {
-                            current_span.column -= current_span.length;
+                        temp_string = temp_string.trim_end_matches(" ").to_owned();
+                        if temp_string.ends_with('\n') {
+                            if current_span.row > 1 {
+                                current_span.row -= 1;
+                            }
                         }
-                        lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                        current_span.column += current_span.length;
+                        current_span.length -= 1;
+                        lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                        if temp_string.ends_with('\n') {
+                            current_span.column = 1;
+                            current_span.row += 1;
+                        } else {
+                            current_span.column += current_span.length;
+                        }
                         current_span.length = 1;
                         temp_string = String::new();
                     }
                     in_block = false;
                 }
                 lexed.push(Lexicals::CloseArrow(current_span.clone()));
+                current_span.column += current_span.length;
                 current_span.length = 0;
                 is_defining_node_name = false;
             }
@@ -100,10 +131,20 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                     in_q_block = true;
                 }
                 if !temp_string.is_empty() {
+                    temp_string = temp_string.trim_end_matches(" ").to_owned();
+                    if temp_string.ends_with('\n') {
+                        if current_span.row > 0 {
+                            current_span.row -= 1;
+                        }
+                    }
                     current_span.length -= 1;
-                    current_span.column -= current_span.length;
-                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                    current_span.column += current_span.length;
+                    lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                    if temp_string.ends_with('\n') {
+                        current_span.column = 1;
+                        current_span.row += 1;
+                    } else {
+                        current_span.column += current_span.length;
+                    }
                     current_span.length = 1;
                     temp_string = String::new();
                 }
@@ -117,10 +158,20 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                 }
                 if peekable.peek() == Some(&'>') || peekable.peek() == Some(&']') {
                     if !temp_string.is_empty() {
+                        temp_string = temp_string.trim_end_matches(" ").to_owned();
+                        if temp_string.ends_with('\n') {
+                            if current_span.row > 0 {
+                                current_span.row -= 1;
+                            }
+                        }
                         current_span.length -= 1;
-                        current_span.column -= current_span.length;
-                        lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                        current_span.column += current_span.length;
+                        lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                        if temp_string.ends_with('\n') {
+                            current_span.column = 1;
+                            current_span.row += 1;
+                        } else {
+                            current_span.column += current_span.length;
+                        }
                         current_span.length = 1;
                         temp_string = String::new();
                     }
@@ -133,6 +184,7 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
             '!' => {
                 if in_block || in_q_block || in_simple_block {
                     lexed.push(Lexicals::Bang(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                 } else {
                     temp_string.push(c);
@@ -144,13 +196,24 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                     continue;
                 }
                 if (in_block || in_q_block || in_simple_block) && !temp_string.is_empty() {
+                    temp_string = temp_string.trim_end_matches(" ").to_owned();
+                    if temp_string.ends_with('\n') {
+                        if current_span.row > 0 {
+                            current_span.row -= 1;
+                        }
+                    }
                     current_span.length -= 1;
-                    current_span.column -= current_span.length;
-                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                    current_span.column += current_span.length;
+                    lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                    if temp_string.ends_with('\n') {
+                        current_span.column = 1;
+                        current_span.row += 1;
+                    } else {
+                        current_span.column += current_span.length;
+                    }
                     temp_string = String::new();
                     current_span.length = 1;
                     lexed.push(Lexicals::Equals(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                 } else {
                     temp_string.push(c);
@@ -159,19 +222,31 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
             '"' => {
                 in_quote = !in_quote;
                 if (in_block || in_simple_block) && !temp_string.is_empty() {
+                    temp_string = temp_string.trim_end_matches(" ").to_owned();
+                    if temp_string.ends_with('\n') {
+                        if current_span.row > 0 {
+                            current_span.row -= 1;
+                        }
+                    }
                     current_span.length -= 1;
-                    current_span.column -= current_span.length;
-                    lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                    current_span.column += current_span.length;
+                    lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                    if temp_string.ends_with('\n') {
+                        current_span.column = 1;
+                        current_span.row += 1;
+                    } else {
+                        current_span.column += current_span.length;
+                    }
                     temp_string = String::new();
                     current_span.length = 1;
                 }
                 lexed.push(Lexicals::DoubleQuote(current_span.clone()));
+                current_span.column += current_span.length;
                 current_span.length = 0;
             }
             '/' => {
                 if !in_quote && (in_block || in_simple_block) {
                     lexed.push(Lexicals::CloseFSlash(current_span.clone()));
+                    current_span.column += current_span.length;
                     current_span.length = 0;
                 } else {
                     temp_string.push(c);
@@ -186,9 +261,10 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
             '\n' => {
                 if !temp_string.is_empty() {
                     temp_string.push('\n');
+                } else {
+                    current_span.row += 1;
+                    current_span.column = 1;
                 }
-                current_span.row += 1;
-                current_span.column = 0;
             }
             _ => {
                 if in_quote {
@@ -201,12 +277,20 @@ pub fn lex(stream: &str) -> Result<Vec<Lexicals>, Box<dyn Error>> {
                         temp_string.push(c);
                     } else {
                         if !temp_string.is_empty() {
-                            current_span.length -= 1;
-                            if current_span.column >= current_span.length {
-                                current_span.column -= current_span.length;
+                            temp_string = temp_string.trim_end_matches(" ").to_owned();
+                            if temp_string.ends_with('\n') {
+                                if current_span.row > 0 {
+                                    current_span.row -= 1;
+                                }
                             }
-                            lexed.push(Lexicals::Text(temp_string, current_span.clone()));
-                            current_span.column += current_span.length;
+                            current_span.length -= 1;
+                            lexed.push(Lexicals::Text(temp_string.clone(), current_span.clone()));
+                            if temp_string.ends_with('\n') {
+                                current_span.column = 1;
+                                current_span.row += 1;
+                            } else {
+                                current_span.column += current_span.length;
+                            }
                             temp_string = String::new();
                             current_span.length = 0;
                         }
